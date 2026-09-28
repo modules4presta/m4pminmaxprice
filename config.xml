@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+	<name>m4pminmaxprice</name>
+	<displayName><![CDATA[M4P Min and Max Price]]></displayName>
+	<version><![CDATA[1.0.0]]></version>
+	<description><![CDATA[Keep the price of a product between a minimum and a maximum you set.]]></description>
+	<author><![CDATA[Modules4Presta]]></author>
+	<tab><![CDATA[pricing_promotion]]></tab>
+	<is_configurable>0</is_configurable>
+	<need_instance>0</need_instance>
+</module>
