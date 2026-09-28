@@ -1,185 +1,226 @@
 <?php
 
 /**
- * LICENCE
+ * m4pminmaxprice
  *
- * ALL RIGHTS RESERVED.
- * YOU ARE NOT ALLOWED TO COPY/EDIT/SHARE/WHATEVER.
- *
- * IN CASE OF ANY PROBLEM CONTACT AUTHOR.
- *
- *  @author    Jan Kołodziej (contact@modules4presta.io)
- *  @copyright modules4presta.io
- *  @license   ALL RIGHTS RESERVED
+ * @author    Modules4Presta <contact@modules4presta.io>
+ * @copyright 2026 Nice Code sp. z o.o. (Modules4Presta)
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 if (!defined('_PS_VERSION_')) {
     exit;
 }
 
-require_once __DIR__ . '/classes/Database.php';
+require_once __DIR__ . '/classes/M4pMinMaxPriceDatabase.php';
 
 class M4pMinMaxPrice extends Module
 {
     public function __construct()
     {
         $this->name = 'm4pminmaxprice';
-        $this->tab = 'administration';
+        $this->tab = 'pricing_promotion';
         $this->version = '1.0.0';
-        $this->author = 'Modules4Presta.io';
-        $this->db = Db::getInstance();
-        $this->context = Context::getContext();
+        $this->author = 'Modules4Presta';
         $this->need_instance = 0;
-        $this->_path = _PS_MODULE_DIR_ . $this->name;
-        $this->ps_versions_compliancy = [
-            'min' => '1.7.0.0',
-            'max' => _PS_VERSION_,
-        ];
         $this->bootstrap = true;
+        $this->ps_versions_compliancy = ['min' => '1.7.6.0', 'max' => _PS_VERSION_];
 
         parent::__construct();
 
-        $this->displayName = $this->l('Min and max price for product');
-        $this->description = $this->l('Module to set min and max price for product which will be set by admin.');
+        $this->displayName = $this->trans('Min and max price', [], 'Modules.M4pminmaxprice.Admin');
+        $this->description = $this->trans('Keeps the price of a product between a minimum and a maximum you set.', [], 'Modules.M4pminmaxprice.Admin');
     }
 
-    /**
-     * Installs the module and registers required hooks
-     * Creates necessary database tables
-     */
-    public function install(): bool
+    public function install()
     {
-        if (!parent::install()) {
-            return false;
-        } elseif (!$this->registerHook('actionProductUpdate')) {
-            return false;
-        } elseif (!Database::create()) {
-            return false;
-        }
-
-        return true;
+        return parent::install()
+            && $this->registerHook('displayAdminProductsExtra')
+            && $this->registerHook('actionProductUpdate')
+            && $this->registerHook('actionProductPriceCalculation')
+            && M4pMinMaxPriceDatabase::create();
     }
 
-    /**
-     * Uninstalls the module and removes database tables
-     */
-    public function uninstall(): bool
+    public function uninstall()
     {
-        if (!parent::uninstall()) {
-            return false;
-        } elseif (!Database::drop()) {
-            return false;
-        }
-
-        return true;
+        return M4pMinMaxPriceDatabase::drop()
+            && parent::uninstall();
     }
 
     /**
-     * Insert price for product
-     */
-    private function insertPrices(
-        int $idProduct,
-        ?float $min,
-        ?float $max,
-        int $idProductAttribute = 0
-    ): bool {
-        $sql = "INSERT INTO `" . _DB_PREFIX_ . "m4pminmaxprice_prices` (`id_product`, `id_product_attribute`, `min`, `max`)
-            VALUES (" . pSQL($idProduct) . ", " . pSQL($idProductAttribute) . ", " . pSQL($min) . ", " . pSQL($max) . ")
-            ON DUPLICATE KEY UPDATE
-                `min` = VALUES(`min`),
-                `max` = VALUES(`max`);";
-
-        return $this->db->execute($sql) ?? false;
-    }
-
-    /**
-     * Get price for attribute
-     * 
-     * @param int $idProduct
-     * @param ?int $idProductAttribute
-     */
-    private function getPrices(int $idProduct, int $idProductAttribute = 0): array
-    {
-        $sql = "SELECT `min`, `max` FROM " . _DB_PREFIX_ . "m4pminmaxprice_prices
-            WHERE `id_product` = " . pSQL($idProduct) . "
-                AND `id_product_attribute` = " . pSQL($idProductAttribute);
-
-        $results = $this->db->getRow($sql);
-        if (!empty($results)) {
-            return $results;
-        }
-
-        return ['min' => 0, 'max' => 0];
-    }
-
-    /**
-     * Render template to prices
+     * Renders the limits table on the product edit page, one row per combination.
      */
     public function hookDisplayAdminProductsExtra($params)
     {
-        $preparedPrices = [];
+        $idProduct = (int) $params['id_product'];
+        $limits = $this->getLimits($idProduct);
 
-        $sql = "SELECT id_product_attribute FROM " . _DB_PREFIX_ . "product_attribute
-            WHERE id_product = " . pSQL((int) $params['id_product']);
+        $rows = [[
+            'id_product_attribute' => 0,
+            'name' => $this->trans('Whole product', [], 'Modules.M4pminmaxprice.Admin'),
+            'min' => $limits[0]['min'] ?? '',
+            'max' => $limits[0]['max'] ?? '',
+        ]];
 
-        $attributes = $this->db->executeS($sql);
-
-        if (!empty($attributes)) {
-            foreach ($attributes as $attribute) {
-                $prices = $this->getPrices(
-                    (int) $params['id_product'],
-                    (int) $attribute['id_product_attribute']
-                );
-
-                $preparedPrices[] = [
-                    'id_product_attribute' => $attribute['id_product_attribute'],
-                    'name' => Product::getProductName((int) $params['id_product'], (int) $attribute['id_product_attribute']),
-                    'min' => $prices['min'],
-                    'max' => $prices['max'],
-                ];
-            }
-        } else {
-            $price = $this->getPrices(
-                (int) $params['id_product']
-            );
-
-            $preparedPrices[] = [
-                'id_product_attribute' => 0,
-                'name' => Product::getProductName((int) $params['id_product']),
-                'min' => $price['min'],
-                'max' => $price['max'],
+        foreach (Product::getProductAttributesIds($idProduct) ?: [] as $attribute) {
+            $idProductAttribute = (int) $attribute['id_product_attribute'];
+            $rows[] = [
+                'id_product_attribute' => $idProductAttribute,
+                'name' => Product::getProductName($idProduct, $idProductAttribute),
+                'min' => $limits[$idProductAttribute]['min'] ?? '',
+                'max' => $limits[$idProductAttribute]['max'] ?? '',
             ];
         }
 
         $this->context->smarty->assign([
-            'prices' => $preparedPrices,
+            'm4pminmaxprice_rows' => $rows,
+            'm4pminmaxprice_currency' => Validate::isLoadedObject($this->context->currency) ? $this->context->currency->iso_code : '',
         ]);
 
         return $this->context->smarty->fetch('module:' . $this->name . '/views/templates/admin/configuration.tpl');
     }
 
-    /**
-     * Hook while update product
-     * 
-     * @param array $params
-     */
-    public function hookActionProductUpdate(array $params): bool
+    public function hookActionProductUpdate($params)
     {
-        $idProduct = $params['id_product'];
+        $submitted = Tools::getValue('m4pminmaxprice_prices');
+        if (!is_array($submitted)) {
+            return;
+        }
 
-        foreach ($params['m4pminmaxprice_prices'] as $idProductAttribute => $prices) {
-            $insertedPrice = $this->insertPrices(
-                (int) $idProduct,
+        $idProduct = (int) $params['id_product'];
+
+        foreach ($submitted as $idProductAttribute => $limits) {
+            $this->saveLimits(
+                $idProduct,
                 (int) $idProductAttribute,
-                (float) $prices['min'],
-                (float) $prices['max']
+                $this->toPrice($limits['min'] ?? null),
+                $this->toPrice($limits['max'] ?? null)
             );
+        }
+    }
 
-            if (!$insertedPrice) {
-                return false;
+    /**
+     * Clamps the calculated price to the limits of the combination, or of the
+     * product when the combination has none.
+     *
+     * @param array $params price is passed by reference by the core
+     */
+    public function hookActionProductPriceCalculation(&$params)
+    {
+        $limits = $this->getLimitsFor((int) $params['id_product'], (int) $params['id_product_attribute']);
+        if ($limits === null) {
+            return;
+        }
+
+        $coefficient = $this->taxCoefficient($params);
+        $price = (float) $params['price'];
+        $clamped = $price;
+
+        if ($limits['min'] !== null) {
+            $clamped = max($clamped, (float) $limits['min'] * $coefficient);
+        }
+        if ($limits['max'] !== null) {
+            $clamped = min($clamped, (float) $limits['max'] * $coefficient);
+        }
+
+        if ($clamped === $price) {
+            return;
+        }
+
+        $params['price'] = $clamped;
+
+        // The core returns this value instead of the price when only the reduction
+        // is asked for, so it has to follow the clamping to stay consistent.
+        if (isset($params['specific_price_reduction'])) {
+            $params['specific_price_reduction'] = max(0.0, (float) $params['specific_price_reduction'] - ($clamped - $price));
+        }
+    }
+
+    /**
+     * @return array|null null when neither the combination nor the product has limits
+     */
+    private function getLimitsFor(int $idProduct, int $idProductAttribute): ?array
+    {
+        $limits = $this->getLimits($idProduct);
+
+        foreach ([$idProductAttribute, 0] as $key) {
+            if (isset($limits[$key]) && ($limits[$key]['min'] !== null || $limits[$key]['max'] !== null)) {
+                return $limits[$key];
             }
         }
 
-        return true;
+        return null;
+    }
+
+    /**
+     * @return array limits indexed by id_product_attribute
+     */
+    private function getLimits(int $idProduct): array
+    {
+        $rows = Db::getInstance()->executeS(
+            'SELECT `id_product_attribute`, `min`, `max` FROM `' . _DB_PREFIX_ . 'm4pminmaxprice_prices`
+            WHERE `id_product` = ' . $idProduct
+        );
+
+        $limits = [];
+        foreach ($rows ?: [] as $row) {
+            $limits[(int) $row['id_product_attribute']] = [
+                'min' => $row['min'] === null ? null : (float) $row['min'],
+                'max' => $row['max'] === null ? null : (float) $row['max'],
+            ];
+        }
+
+        return $limits;
+    }
+
+    private function saveLimits(int $idProduct, int $idProductAttribute, ?float $min, ?float $max): bool
+    {
+        if ($min === null && $max === null) {
+            return Db::getInstance()->delete(
+                'm4pminmaxprice_prices',
+                'id_product = ' . $idProduct . ' AND id_product_attribute = ' . $idProductAttribute
+            );
+        }
+
+        if ($min !== null && $max !== null && $min > $max) {
+            [$min, $max] = [$max, $min];
+        }
+
+        return Db::getInstance()->execute(
+            'INSERT INTO `' . _DB_PREFIX_ . 'm4pminmaxprice_prices` (`id_product`, `id_product_attribute`, `min`, `max`)
+            VALUES (' . $idProduct . ', ' . $idProductAttribute . ', '
+            . ($min === null ? 'NULL' : (float) $min) . ', ' . ($max === null ? 'NULL' : (float) $max) . ')
+            ON DUPLICATE KEY UPDATE `min` = VALUES(`min`), `max` = VALUES(`max`)'
+        );
+    }
+
+    /**
+     * An empty field means "no limit", so it is stored as NULL rather than zero.
+     */
+    private function toPrice($value): ?float
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        $price = (float) str_replace(',', '.', (string) $value);
+
+        return $price < 0 ? null : $price;
+    }
+
+    /**
+     * Limits are entered tax excluded, so they need the tax rate when the core
+     * asks for a tax included price.
+     */
+    private function taxCoefficient(array $params): float
+    {
+        if (empty($params['use_tax'])) {
+            return 1.0;
+        }
+
+        $idAddress = isset($params['address']) && $params['address'] instanceof Address ? (int) $params['address']->id : 0;
+        $rate = (float) Tax::getProductTaxRate((int) $params['id_product'], $idAddress ?: null);
+
+        return 1 + ($rate / 100);
     }
 }

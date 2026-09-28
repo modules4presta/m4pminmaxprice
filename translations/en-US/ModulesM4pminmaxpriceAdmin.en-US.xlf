@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="module" source-language="en-US" target-language="en-US" datatype="plaintext">
+    <body>
+      <trans-unit id="c070321960413bd7e413fbc73732c15d">
+        <source>Min and max price</source>
+        <target>Min and max price</target>
+      </trans-unit>
+      <trans-unit id="d10ba766321ff5f72e75988a6a3b368e">
+        <source>Keeps the price of a product between a minimum and a maximum you set.</source>
+        <target>Keeps the price of a product between a minimum and a maximum you set.</target>
+      </trans-unit>
+      <trans-unit id="8a95489116c12e14481e60f6d0bf7db3">
+        <source>Whole product</source>
+        <target>Whole product</target>
+      </trans-unit>
+      <trans-unit id="4370a588ea7b6ed2864991808d1893da">
+        <source>Prices are tax excluded. Leave a field empty for no limit.</source>
+        <target>Prices are tax excluded. Leave a field empty for no limit.</target>
+      </trans-unit>
+      <trans-unit id="47ac923d219501859fb68fed8c8db77b">
+        <source>Combination</source>
+        <target>Combination</target>
+      </trans-unit>
+      <trans-unit id="b9bbefd932cceeaf33d6ab76c1c26350">
+        <source>Minimum price</source>
+        <target>Minimum price</target>
+      </trans-unit>
+      <trans-unit id="e6d1a870c9dea4bc70be18c6d3f357d4">
+        <source>Maximum price</source>
+        <target>Maximum price</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>
